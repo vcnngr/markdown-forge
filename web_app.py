@@ -13,7 +13,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI(title="Text/PDF to Markdown Converter", version="1.0.0")
+app = FastAPI(
+    title="Markdown Forge - Text/PDF to Markdown Converter", 
+    version="1.0.0",
+    description="Convert text and PDF files to structured Markdown using AI",
+    docs_url="/docs",
+    contact={
+        "name": "Markdown Forge",
+        "url": "https://github.com/vcnngr/markdown-forge",
+    }
+)
 
 # Serve static files
 app.mount("/static", StaticFiles(directory="static"), name="static")

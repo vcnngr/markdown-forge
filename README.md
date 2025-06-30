@@ -34,15 +34,16 @@ Applicazione completa per convertire testi e file PDF in Markdown strutturato ut
 ### Installazione automatica (Linux/Mac):
 ```bash
 # Scarica e avvia tutto automaticamente
-curl -sSL https://raw.githubusercontent.com/your-repo/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/vcnngr/markdown-forge/main/install.sh | bash
+
 ```
 
 ### Installazione manuale:
 
 1. **Clone e setup:**
    ```bash
-   git clone <repository>
-   cd text-to-md-converter
+   git clone https://github.com/vcnngr/markdown-forge
+   cd markdown-forge
    chmod +x install.sh
    ./install.sh
    ```
@@ -220,3 +221,5 @@ docker-compose up --build -d
 ---
 
 **🎉 Buona conversione con Text/PDF to Markdown Converter!**
+
+Per supporto: [GitHub Issues](https://github.com/vcnngr/markdown-forge/issues)
