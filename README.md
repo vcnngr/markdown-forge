@@ -161,7 +161,7 @@ git pull && docker-compose up --build -d
 
 ### **Directory struttura:**
 ```
-text-to-md-converter/
+markdown-forge/
 ├── static/           # File interfaccia web
 ├── output/           # File convertiti
 ├── input/            # File di input (opzionale)
