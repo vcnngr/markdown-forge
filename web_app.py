@@ -13,16 +13,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI(
-    title="Markdown Forge - Text/PDF to Markdown Converter", 
-    version="1.0.0",
-    description="Convert text and PDF files to structured Markdown using AI",
-    docs_url="/docs",
-    contact={
-        "name": "Markdown Forge",
-        "url": "https://github.com/vcnngr/markdown-forge",
-    }
-)
+app = FastAPI(title="Markdown Forge - Text/PDF to Markdown Converter", version="1.0.0")
 
 # Serve static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -34,19 +25,44 @@ class AIConverter:
         self.openai_client = None
         self.gemini_client = None
         
+        # Leggi i modelli dal file .env con fallback ai default
+        self.claude_model = os.getenv("CLAUDE_MODEL", "claude-3-sonnet-20240229")
+        self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4")
+        self.gemini_model = os.getenv("GEMINI_MODEL", "gemini-pro")
+        
+        # Leggi le configurazioni avanzate
+        self.max_tokens = int(os.getenv("MAX_TOKENS", "4000"))
+        self.request_timeout = int(os.getenv("REQUEST_TIMEOUT", "120"))
+        
+        # Inizializza i client solo se le API key sono presenti
         if os.getenv("ANTHROPIC_API_KEY"):
-            self.anthropic_client = anthropic.Anthropic(
-                api_key=os.getenv("ANTHROPIC_API_KEY")
-            )
+            try:
+                self.anthropic_client = anthropic.Anthropic(
+                    api_key=os.getenv("ANTHROPIC_API_KEY"),
+                    timeout=self.request_timeout
+                )
+                print(f"✅ Claude configurato con modello: {self.claude_model}")
+            except Exception as e:
+                print(f"❌ Errore configurazione Claude: {e}")
         
         if os.getenv("OPENAI_API_KEY"):
-            self.openai_client = openai.OpenAI(
-                api_key=os.getenv("OPENAI_API_KEY")
-            )
+            try:
+                self.openai_client = openai.OpenAI(
+                    api_key=os.getenv("OPENAI_API_KEY"),
+                    timeout=self.request_timeout
+                )
+                print(f"✅ OpenAI configurato con modello: {self.openai_model}")
+            except Exception as e:
+                print(f"❌ Errore configurazione OpenAI: {e}")
         
         if os.getenv("GEMINI_API_KEY"):
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-            self.gemini_client = genai.GenerativeModel('gemini-pro')
+            try:
+                genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+                self.gemini_client = genai.GenerativeModel(self.gemini_model)
+                print(f"✅ Gemini configurato con modello: {self.gemini_model}")
+            except Exception as e:
+                print(f"❌ Errore configurazione Gemini: {e}")
+                self.gemini_client = None
 
     async def convert_with_claude(self, text: str, task: str = "improve") -> str:
         """Converte testo usando Claude"""
@@ -55,13 +71,15 @@ class AIConverter:
         
         prompt = self._get_prompt(text, task)
         
-        message = self.anthropic_client.messages.create(
-            model="claude-3-sonnet-20240229",
-            max_tokens=4000,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        
-        return message.content[0].text
+        try:
+            message = self.anthropic_client.messages.create(
+                model=self.claude_model,  # Usa il modello dal .env
+                max_tokens=self.max_tokens,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return message.content[0].text
+        except Exception as e:
+            raise HTTPException(500, f"Errore Claude ({self.claude_model}): {str(e)}")
 
     async def convert_with_openai(self, text: str, task: str = "improve") -> str:
         """Converte testo usando OpenAI"""
@@ -70,13 +88,16 @@ class AIConverter:
         
         prompt = self._get_prompt(text, task)
         
-        response = self.openai_client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=4000
-        )
-        
-        return response.choices[0].message.content
+        try:
+            response = self.openai_client.chat.completions.create(
+                model=self.openai_model,  # Usa il modello dal .env
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=self.max_tokens,
+                timeout=self.request_timeout
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            raise HTTPException(500, f"Errore OpenAI ({self.openai_model}): {str(e)}")
 
     async def convert_with_gemini(self, text: str, task: str = "improve") -> str:
         """Converte testo usando Gemini"""
@@ -85,8 +106,26 @@ class AIConverter:
         
         prompt = self._get_prompt(text, task)
         
-        response = self.gemini_client.generate_content(prompt)
-        return response.text
+        try:
+            # Configurazione di generazione per Gemini
+            generation_config = {
+                'temperature': 0.1,
+                'top_p': 0.8,
+                'top_k': 40,
+                'max_output_tokens': self.max_tokens,
+            }
+            
+            response = self.gemini_client.generate_content(
+                prompt,
+                generation_config=generation_config
+            )
+            
+            if not response.text:
+                raise HTTPException(500, "Gemini non ha restituito contenuto")
+                
+            return response.text
+        except Exception as e:
+            raise HTTPException(500, f"Errore Gemini ({self.gemini_model}): {str(e)}")
 
     def _get_prompt(self, text: str, task: str) -> str:
         """Genera il prompt basato sul task richiesto"""
@@ -122,6 +161,23 @@ OUTPUT: Fornisci solo il contenuto Markdown, senza spiegazioni aggiuntive.
 """
         return base_prompt
 
+    def get_available_providers(self) -> dict:
+        """Restituisce i provider disponibili con i loro modelli"""
+        return {
+            "claude": {
+                "available": bool(self.anthropic_client),
+                "model": self.claude_model
+            },
+            "openai": {
+                "available": bool(self.openai_client),
+                "model": self.openai_model
+            },
+            "gemini": {
+                "available": bool(self.gemini_client),
+                "model": self.gemini_model
+            }
+        }
+
 def extract_text_from_pdf(file_content: bytes) -> str:
     """Estrae testo da un file PDF"""
     try:
@@ -130,7 +186,11 @@ def extract_text_from_pdf(file_content: bytes) -> str:
         pdf_reader = PyPDF2.PdfReader(pdf_file)
         
         text = ""
-        for page in pdf_reader.pages:
+        max_pages = int(os.getenv("PDF_MAX_PAGES", "500"))
+        
+        for i, page in enumerate(pdf_reader.pages):
+            if i >= max_pages:
+                break
             text += page.extract_text() + "\n"
         
         return text.strip()
@@ -143,18 +203,40 @@ converter = AIConverter()
 @app.get("/", response_class=HTMLResponse)
 async def serve_web_interface():
     """Serve l'interfaccia web principale"""
-    with open("static/index.html", "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+    try:
+        with open("static/index.html", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        return HTMLResponse(
+            content="<h1>Interfaccia web non trovata</h1><p>Assicurati che il file static/index.html esista</p>",
+            status_code=404
+        )
 
 @app.get("/health")
 async def health_check():
     """Verifica lo stato delle API configurate"""
+    providers = converter.get_available_providers()
+    
     status = {
-        "claude": bool(converter.anthropic_client),
-        "openai": bool(converter.openai_client),
-        "gemini": bool(converter.gemini_client)
+        "claude": providers["claude"]["available"],
+        "openai": providers["openai"]["available"],
+        "gemini": providers["gemini"]["available"]
     }
-    return {"status": "healthy", "apis_configured": status}
+    
+    return {
+        "status": "healthy",
+        "apis_configured": status,
+        "models": {
+            "claude": providers["claude"]["model"],
+            "openai": providers["openai"]["model"],
+            "gemini": providers["gemini"]["model"]
+        },
+        "settings": {
+            "max_tokens": converter.max_tokens,
+            "request_timeout": converter.request_timeout,
+            "pdf_max_pages": os.getenv("PDF_MAX_PAGES", "500")
+        }
+    }
 
 @app.post("/convert/text")
 async def convert_text(
@@ -164,6 +246,12 @@ async def convert_text(
     filename: str = Form("output.md")
 ):
     """Converte testo in Markdown - restituisce il contenuto direttamente per la web UI"""
+    
+    # Validazione lunghezza testo
+    max_length = int(os.getenv("MAX_TEXT_LENGTH", "100000"))
+    if len(text) > max_length:
+        raise HTTPException(400, f"Testo troppo lungo. Massimo {max_length} caratteri.")
+    
     try:
         if provider == "claude":
             result = await converter.convert_with_claude(text, task)
@@ -176,6 +264,8 @@ async def convert_text(
         
         return result
     
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, f"Errore nella conversione: {str(e)}")
 
@@ -187,6 +277,12 @@ async def convert_pdf(
     filename: str = Form("output.md")
 ):
     """Converte PDF in Markdown - restituisce il contenuto direttamente per la web UI"""
+    
+    # Validazione file
+    max_size_mb = int(os.getenv("MAX_FILE_SIZE_MB", "50"))
+    if file.size and file.size > max_size_mb * 1024 * 1024:
+        raise HTTPException(400, f"File troppo grande. Massimo {max_size_mb}MB.")
+    
     try:
         # Verifica che sia un PDF
         if not file.filename.lower().endswith('.pdf'):
@@ -199,7 +295,7 @@ async def convert_pdf(
         text = extract_text_from_pdf(content)
         
         if not text.strip():
-            raise HTTPException(400, "Impossibile estrarre testo dal PDF")
+            raise HTTPException(400, "Impossibile estrarre testo dal PDF o PDF vuoto")
         
         # Converti con l'AI scelta
         if provider == "claude":
@@ -213,13 +309,31 @@ async def convert_pdf(
         
         return result
     
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, f"Errore nella conversione PDF: {str(e)}")
 
+@app.get("/models")
+async def get_models():
+    """Restituisce i modelli configurati per ogni provider"""
+    return converter.get_available_providers()
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
-
-
+    
+    # Leggi configurazioni dal .env
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8000"))
+    debug = os.getenv("DEBUG", "false").lower() == "true"
+    
+    print(f"🚀 Avvio Markdown Forge su {host}:{port}")
+    print(f"🔧 Debug mode: {debug}")
+    
+    uvicorn.run(
+        app, 
+        host=host, 
+        port=port, 
+        reload=debug,
+        log_level="info" if not debug else "debug"
+    )
