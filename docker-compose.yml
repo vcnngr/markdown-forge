@@ -1,0 +1,12 @@
+services:
+  markdown-forge:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./static:/app/static
+      - ./output:/app/output
+      - ./.env:/app/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped

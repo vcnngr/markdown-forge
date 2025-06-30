@@ -1,0 +1,452 @@
+# static/index.html
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text/PDF to Markdown Converter</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <style>
+        .drag-over {
+            border-color: #3b82f6 !important;
+            background-color: #eff6ff !important;
+        }
+        .loader {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-4">
+                📝 Text/PDF to Markdown Converter
+            </h1>
+            <p class="text-gray-600 text-lg">
+                Converti i tuoi testi e PDF in Markdown strutturato usando AI
+            </p>
+        </div>
+
+        <!-- Status API -->
+        <div id="api-status" class="mb-6 p-4 rounded-lg hidden">
+            <h3 class="font-semibold mb-2">Stato API:</h3>
+            <div class="flex space-x-4">
+                <span id="claude-status" class="px-3 py-1 rounded text-sm"></span>
+                <span id="openai-status" class="px-3 py-1 rounded text-sm"></span>
+                <span id="gemini-status" class="px-3 py-1 rounded text-sm"></span>
+            </div>
+        </div>
+
+        <!-- Main Converter -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <!-- Tabs -->
+            <div class="flex mb-6 border-b">
+                <button id="text-tab" class="tab-button px-6 py-3 font-medium border-b-2 border-blue-500 text-blue-600">
+                    📄 Testo
+                </button>
+                <button id="pdf-tab" class="tab-button px-6 py-3 font-medium text-gray-500 hover:text-gray-700">
+                    📁 PDF Upload
+                </button>
+            </div>
+
+            <!-- Text Input Tab -->
+            <div id="text-content" class="tab-content">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Inserisci il tuo testo:
+                    </label>
+                    <textarea id="text-input" 
+                              class="w-full h-64 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              placeholder="Incolla qui il testo da convertire in Markdown..."></textarea>
+                </div>
+            </div>
+
+            <!-- PDF Upload Tab -->
+            <div id="pdf-content" class="tab-content hidden">
+                <div id="drop-zone" 
+                     class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors cursor-pointer">
+                    <div id="drop-zone-content">
+                        <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                            <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        <p class="text-lg text-gray-600 mb-2">Trascina qui il tuo PDF</p>
+                        <p class="text-sm text-gray-500 mb-4">oppure</p>
+                        <button type="button" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors">
+                            Seleziona File PDF
+                        </button>
+                    </div>
+                    <div id="file-info" class="hidden">
+                        <div class="flex items-center justify-center space-x-2">
+                            <svg class="h-8 w-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                            </svg>
+                            <span id="file-name" class="text-lg font-medium text-gray-700"></span>
+                        </div>
+                        <button id="remove-file" class="mt-2 text-sm text-red-500 hover:text-red-700">
+                            Rimuovi file
+                        </button>
+                    </div>
+                </div>
+                <input type="file" id="file-input" accept=".pdf" class="hidden">
+            </div>
+
+            <!-- Options -->
+            <div class="grid md:grid-cols-3 gap-4 mb-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Provider AI:</label>
+                    <select id="provider-select" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="claude">🤖 Claude (Anthropic)</option>
+                        <option value="openai">🧠 GPT-4 (OpenAI)</option>
+                        <option value="gemini">✨ Gemini (Google)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Tipo conversione:</label>
+                    <select id="task-select" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="improve">✨ Migliora e struttura</option>
+                        <option value="structure">📋 Solo formattazione MD</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Nome file output:</label>
+                    <input type="text" id="filename-input" value="output.md" 
+                           class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+
+            <!-- Convert Button -->
+            <button id="convert-btn" 
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-4 px-6 rounded-lg transition-colors flex items-center justify-center space-x-2">
+                <span>🚀 Converti in Markdown</span>
+            </button>
+
+            <!-- Loading -->
+            <div id="loading" class="hidden text-center py-8">
+                <div class="loader mx-auto mb-4"></div>
+                <p class="text-gray-600">Conversione in corso...</p>
+                <p class="text-sm text-gray-500 mt-2">Questo può richiedere alcuni secondi</p>
+            </div>
+
+            <!-- Results -->
+            <div id="results" class="hidden mt-6">
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                    <div class="flex items-center space-x-2">
+                        <svg class="h-5 w-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                        <span class="text-green-700 font-medium">Conversione completata!</span>
+                    </div>
+                </div>
+                
+                <div class="border border-gray-200 rounded-lg overflow-hidden">
+                    <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                        <h3 class="font-medium text-gray-700">Preview Markdown:</h3>
+                        <div class="space-x-2">
+                            <button id="download-btn" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded text-sm transition-colors">
+                                💾 Scarica File
+                            </button>
+                            <button id="copy-btn" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm transition-colors">
+                                📋 Copia Testo
+                            </button>
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <pre id="markdown-preview" class="whitespace-pre-wrap text-sm bg-gray-50 p-4 rounded border overflow-auto max-h-96"></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error Display -->
+            <div id="error" class="hidden mt-6 bg-red-50 border border-red-200 rounded-lg p-4">
+                <div class="flex items-center space-x-2 mb-2">
+                    <svg class="h-5 w-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <span class="text-red-700 font-medium">Errore durante la conversione</span>
+                </div>
+                <p id="error-message" class="text-red-600 text-sm"></p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="text-center text-gray-500 text-sm">
+            <p>Powered by AI • Supporta testo e PDF • Markdown strutturato</p>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let selectedFile = null;
+        let lastResult = null;
+
+        // DOM Elements
+        const textTab = document.getElementById('text-tab');
+        const pdfTab = document.getElementById('pdf-tab');
+        const textContent = document.getElementById('text-content');
+        const pdfContent = document.getElementById('pdf-content');
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const fileInfo = document.getElementById('file-info');
+        const dropZoneContent = document.getElementById('drop-zone-content');
+        const fileName = document.getElementById('file-name');
+        const removeFileBtn = document.getElementById('remove-file');
+        const convertBtn = document.getElementById('convert-btn');
+        const loading = document.getElementById('loading');
+        const results = document.getElementById('results');
+        const error = document.getElementById('error');
+        const markdownPreview = document.getElementById('markdown-preview');
+        const downloadBtn = document.getElementById('download-btn');
+        const copyBtn = document.getElementById('copy-btn');
+
+        // Tab switching
+        textTab.addEventListener('click', () => switchTab('text'));
+        pdfTab.addEventListener('click', () => switchTab('pdf'));
+
+        function switchTab(tab) {
+            if (tab === 'text') {
+                textTab.classList.add('border-blue-500', 'text-blue-600');
+                textTab.classList.remove('text-gray-500');
+                pdfTab.classList.remove('border-blue-500', 'text-blue-600');
+                pdfTab.classList.add('text-gray-500');
+                textContent.classList.remove('hidden');
+                pdfContent.classList.add('hidden');
+            } else {
+                pdfTab.classList.add('border-blue-500', 'text-blue-600');
+                pdfTab.classList.remove('text-gray-500');
+                textTab.classList.remove('border-blue-500', 'text-blue-600');
+                textTab.classList.add('text-gray-500');
+                pdfContent.classList.remove('hidden');
+                textContent.classList.add('hidden');
+            }
+            hideResults();
+        }
+
+        // File handling
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', handleDragOver);
+        dropZone.addEventListener('dragleave', handleDragLeave);
+        dropZone.addEventListener('drop', handleDrop);
+        fileInput.addEventListener('change', handleFileSelect);
+        removeFileBtn.addEventListener('click', removeFile);
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        }
+
+        function handleFileSelect(e) {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        }
+
+        function handleFile(file) {
+            if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+                selectedFile = file;
+                fileName.textContent = file.name;
+                dropZoneContent.classList.add('hidden');
+                fileInfo.classList.remove('hidden');
+                hideResults();
+            } else {
+                showError('Seleziona un file PDF valido');
+            }
+        }
+
+        function removeFile() {
+            selectedFile = null;
+            fileInput.value = '';
+            dropZoneContent.classList.remove('hidden');
+            fileInfo.classList.add('hidden');
+            hideResults();
+        }
+
+        // Convert function
+        convertBtn.addEventListener('click', convert);
+
+        async function convert() {
+            const activeTab = !textContent.classList.contains('hidden') ? 'text' : 'pdf';
+            
+            if (activeTab === 'text') {
+                const text = document.getElementById('text-input').value.trim();
+                if (!text) {
+                    showError('Inserisci del testo da convertire');
+                    return;
+                }
+                await convertText(text);
+            } else {
+                if (!selectedFile) {
+                    showError('Seleziona un file PDF');
+                    return;
+                }
+                await convertPDF(selectedFile);
+            }
+        }
+
+        async function convertText(text) {
+            const formData = new FormData();
+            formData.append('text', text);
+            formData.append('provider', document.getElementById('provider-select').value);
+            formData.append('task', document.getElementById('task-select').value);
+            formData.append('filename', document.getElementById('filename-input').value);
+
+            await makeRequest('/convert/text', formData);
+        }
+
+        async function convertPDF(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('provider', document.getElementById('provider-select').value);
+            formData.append('task', document.getElementById('task-select').value);
+            formData.append('filename', document.getElementById('filename-input').value);
+
+            await makeRequest('/convert/pdf', formData);
+        }
+
+        async function makeRequest(endpoint, formData) {
+            showLoading();
+            hideResults();
+            hideError();
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const text = await response.text();
+                    lastResult = text;
+                    showResults(text);
+                } else {
+                    const errorData = await response.json();
+                    showError(errorData.detail || 'Errore durante la conversione');
+                }
+            } catch (err) {
+                showError('Errore di connessione: ' + err.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // UI Functions
+        function showLoading() {
+            convertBtn.classList.add('hidden');
+            loading.classList.remove('hidden');
+        }
+
+        function hideLoading() {
+            convertBtn.classList.remove('hidden');
+            loading.classList.add('hidden');
+        }
+
+        function showResults(markdown) {
+            markdownPreview.textContent = markdown;
+            results.classList.remove('hidden');
+        }
+
+        function hideResults() {
+            results.classList.add('hidden');
+        }
+
+        function showError(message) {
+            document.getElementById('error-message').textContent = message;
+            error.classList.remove('hidden');
+        }
+
+        function hideError() {
+            error.classList.add('hidden');
+        }
+
+        // Download and copy functions
+        downloadBtn.addEventListener('click', downloadResult);
+        copyBtn.addEventListener('click', copyResult);
+
+        function downloadResult() {
+            if (!lastResult) return;
+            
+            const filename = document.getElementById('filename-input').value || 'output.md';
+            const blob = new Blob([lastResult], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        async function copyResult() {
+            if (!lastResult) return;
+            
+            try {
+                await navigator.clipboard.writeText(lastResult);
+                const originalText = copyBtn.textContent;
+                copyBtn.textContent = '✅ Copiato!';
+                setTimeout(() => {
+                    copyBtn.textContent = originalText;
+                }, 2000);
+            } catch (err) {
+                showError('Errore durante la copia');
+            }
+        }
+
+        // Check API status on load
+        async function checkAPIStatus() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                
+                const apiStatus = document.getElementById('api-status');
+                const claudeStatus = document.getElementById('claude-status');
+                const openaiStatus = document.getElementById('openai-status');
+                const geminiStatus = document.getElementById('gemini-status');
+                
+                apiStatus.classList.remove('hidden');
+                
+                claudeStatus.textContent = 'Claude: ' + (data.apis_configured.claude ? 'Disponibile' : 'Non configurato');
+                claudeStatus.className = data.apis_configured.claude ? 'px-3 py-1 rounded text-sm bg-green-100 text-green-800' : 'px-3 py-1 rounded text-sm bg-red-100 text-red-800';
+                
+                openaiStatus.textContent = 'OpenAI: ' + (data.apis_configured.openai ? 'Disponibile' : 'Non configurato');
+                openaiStatus.className = data.apis_configured.openai ? 'px-3 py-1 rounded text-sm bg-green-100 text-green-800' : 'px-3 py-1 rounded text-sm bg-red-100 text-red-800';
+                
+                geminiStatus.textContent = 'Gemini: ' + (data.apis_configured.gemini ? 'Disponibile' : 'Non configurato');
+                geminiStatus.className = data.apis_configured.gemini ? 'px-3 py-1 rounded text-sm bg-green-100 text-green-800' : 'px-3 py-1 rounded text-sm bg-red-100 text-red-800';
+                
+            } catch (err) {
+                console.error('Errore nel controllo API:', err);
+            }
+        }
+
+        // Initialize
+        checkAPIStatus();
+    </script>
+</body>
+</html>
+
